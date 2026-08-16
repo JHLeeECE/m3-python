@@ -6,7 +6,7 @@ M3-Python
 Utilities and software libraries for the [M3 ecosystem](http://cubeworks.us) and interfacing with the [ICE board](http://mbus.io/ice.html). 
 
 ```bash
-$ pip install m3
+$ pip install git+https://github.com/JHLeeECE/m3-python.git@master
 $ # Program the board via the optical interface:
 $ m3_ice goc flash program.bin
 ```

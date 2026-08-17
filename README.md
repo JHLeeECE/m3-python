@@ -5,13 +5,17 @@ M3-Python
 
 Utilities and software libraries for the [M3 ecosystem](http://cubeworks.us) and interfacing with the [ICE board](http://mbus.io/ice.html). 
 
+M3-Python supports CPython 3.9. Install the local checkout with:
+
 ```bash
 $ pip install m3
 $ # Program the board via the optical interface:
 $ m3_ice goc flash program.bin
 ```
 
-The `m3_ice` utility should handle most use cases, however users are free to write their scripts against the `ice` library directly.
+The simulator and integration suite require `socat` and Unix PTYs. Run them on Linux, or use WSL instead of native Windows, with `tox -e py39`.
+
+The `m3_ice` utility should handle most use cases, however users are free to write their scripts against the `m3.ice` library directly.
 Developers are encouraged to consider some of the higher-level interfaces provided by `m3_common`.
 
 m3_ice

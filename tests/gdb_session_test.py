@@ -22,6 +22,12 @@ import m3.ice_simulator
 import m3.m3_ice
 from m3.m3_gdb import * 
 
+def send_text(sock, msg):
+    sock.sendall(msg.encode('ascii'))
+
+def recv_text(sock, size):
+    return sock.recv(size).decode('ascii')
+
 class TestGdbFull(object):
 
     # magic nose variable
@@ -80,16 +86,16 @@ class TestGdbFull(object):
 
         def cmd_noresp(sock, cmd):
             this.log.debug('TX: ' + cmd)
-            s.send(cmd)
-            plus = s.recv(1)
+            send_text(s, cmd)
+            plus = recv_text(s, 1)
             this.log.debug('plus: ' + plus)
             assert(plus == '+')
 
         def cmd(sock, cmd):
             cmd_noresp(sock, cmd)     
-            rx_resp = s.recv(4096)
+            rx_resp = recv_text(s, 4096)
             this.log.debug('resp: ' + rx_resp)
-            s.send('+')
+            send_text(s, '+')
             return rx_resp
 
         this.log.info("Testing GDB Session")
@@ -115,7 +121,7 @@ class TestGdbFull(object):
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect( ('localhost',this.port))
-        s.send('+')
+        send_text(s, '+')
 
         this.log.info("starting transaction")
 
@@ -283,9 +289,9 @@ class TestGdbFull(object):
 
         ## CTRL-C occurs a little differently :(
         this.log.debug("Sending CTRL-C")
-        s.send( chr(0x03)) # CTRL-C
+        send_text(s, chr(0x03)) # CTRL-C
         # no plus
-        rx_resp = s.recv(4096)
+        rx_resp = recv_text(s, 4096)
         this.log.debug('resp: ' + rx_resp)
         assert(rx_resp == '$S05#b8')
         
@@ -524,7 +530,7 @@ if __name__ == '__main__':
     result = nose.run( defaultTest=__name__, )
 
     if result == True:
-        print 'TESTS PASSED'
+        print ('TESTS PASSED')
     else:
-        print 'TESTS FAILED'
+        print ('TESTS FAILED')
 

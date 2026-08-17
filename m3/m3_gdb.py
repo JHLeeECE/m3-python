@@ -7,13 +7,6 @@
 #
 #
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 import binascii
 import logging
 import os
@@ -24,15 +17,14 @@ import sys
 import threading
 import time
 
-from m3.m3_mbus import MBusInterface
-from m3.m3_mbus import Memory
-from m3.m3_mbus import RegFile
+from .m3_mbus import MBusInterface
+from .m3_mbus import Memory
+from .m3_mbus import RegFile
 
 #inspired by
 # https://github.com/0vercl0k/ollydbg2-python/blob/master/samples/gdbserver/gdbserver.py#L147
 
-try: from . import m3_logging
-except ValueError: import logging as m3_logging
+from . import m3_logging
 
 class GdbRemote(object):
     '''
@@ -65,7 +57,7 @@ class GdbRemote(object):
         except socket.error as msg:
             this.log.error('Bind to port: ' + str(tcp_port) + \
                             ' failed. Error Code : ' + \
-                            str(msg[0]) + ' Message ' + msg[1] )
+                            str(msg.errno) + ' Message ' + msg.strerror )
             raise this.PortTakenException()
 
         this.log.info( 'Bound to port: ' + str(tcp_port))
@@ -114,7 +106,7 @@ class GdbRemote(object):
             #grab the opening '+'
             this.log.debug('Grabbing opening +')
             plus = conn.recv(1)
-            assert(plus == '+')
+            assert(plus == b'+')
 
             # start a response thread
             TxTid = threading.Thread( target=this._gdb_tx, args=(conn,) )
@@ -153,7 +145,7 @@ class GdbRemote(object):
                 return
             elif msg == '+':
                 this.log.debug('TX: ' + str(msg))
-                conn.send(msg)
+                conn.sendall(msg.encode('ascii'))
             else:
                 this._gdb_resp(conn, msg) 
 
@@ -223,7 +215,7 @@ class GdbRemote(object):
             this.log.debug('RX: ' + str(rawdata) ) 
 
             # CTRL+C
-            if chr(0x03) in rawdata:
+            if b'\x03' in rawdata:
                 raise this.CtrlCException()
             
                 # static buffer to tack on the new data
@@ -232,24 +224,24 @@ class GdbRemote(object):
             except AttributeError: this._buf_data = rawdata
 
             # acks "+" at the beginning can be safely removed
-            if this._buf_data[0] == '+':
+            if this._buf_data[0:1] == b'+':
                 this._buf_data= this._buf_data[1:]
         
             msg = None
             
-            chkIdx = this._buf_data.find('#')
+            chkIdx = this._buf_data.find(b'#')
             # look for a checksum marker + 2 checksum bytes
             if (chkIdx > 0) and (len(this._buf_data) >= chkIdx + 3):
                 #this.log.debug('Found # at: ' + str(chkIdx) )
 
                 # get the message and checksum
-                assert(this._buf_data[0] == '$')
+                assert(this._buf_data[0:1] == b'$')
                 msg = this._buf_data[1:chkIdx]
                 msgSum = int(this._buf_data[chkIdx+1:chkIdx+3],16)
 
                 calcSum= 0
                 for byte in msg:
-                    calcSum = (calcSum + ord(byte)) & 0xff
+                    calcSum = (calcSum + byte) & 0xff
 
                 if calcSum != msgSum:
                     raise Exception("Checksum Error")
@@ -257,6 +249,8 @@ class GdbRemote(object):
                     #this.log.debug('Checksum pass')
                     pass
                 
+                msg = msg.decode('latin-1')
+
                 if '}' in msg:
                     raise Exception("FIXME: escape sequence")
 
@@ -290,7 +284,7 @@ class GdbRemote(object):
         gdb_msg = '$%s#%.2x' % (msg, chkSum)
        
         this.log.debug('TX: ' + str(gdb_msg))
-        conn.send( gdb_msg )
+        conn.sendall(gdb_msg.encode('ascii'))
 
 
 
@@ -428,7 +422,7 @@ class GdbCtrl(object):
             halt management thread, waits for halt to be triggered, 
             then calls halt_cb("S05") if halt_cb is valid 
             '''
-            while not this.stop.isSet():
+            while not this.stop.is_set():
                 try:  
                     mbus_addr, mbus_data = this.queue.get( True, 10)
                     this.log.debug("HALT triggered")
@@ -552,7 +546,7 @@ class GdbCtrl(object):
         data = binascii.unhexlify(data) 
         
         while size_bytes > 0:
-            b = struct.unpack("B", data[0])[0]
+            b = data[0]
             this.log.debug('Writing ' + hex(b) + ' to ' \
                 + hex(addr))
 
@@ -634,7 +628,7 @@ class GdbCtrl(object):
             encode_str = this.encode_str[read_bytes]
             val = this.mem[(addr,read_bytes * 8)]
             this.log.debug('mem read: ' + hex(addr) + ' ' + hex(val))
-            val = struct.pack(encode_str, val).encode('hex')#lit endian
+            val = struct.pack(encode_str, val).hex()#lit endian
             resp += val
             addr += read_bytes
             size_bytes -= read_bytes
@@ -649,7 +643,7 @@ class GdbCtrl(object):
 
         val = this.rf[reg]
         if reg == 'pc': val -= 4
-        val = struct.pack(encode ,val).encode('hex') #lit endian 
+        val = struct.pack(encode ,val).hex() #lit endian
         val = '00' * this.regsPads[reg] + val # add some front-padding
         return val
 
@@ -804,7 +798,7 @@ class test_GdbCtrl(GdbCtrl):
         this.log.info('mem write: ' + hex(addr) + ' of ' + str(size_bytes))
         data = binascii.unhexlify(data) 
         while size_bytes > 0:
-            b = struct.unpack("B", data[0])[0]
+            b = data[0]
             this.log.debug('Writing ' + hex(b) + ' to ' \
                 + hex(addr))
 
@@ -850,15 +844,15 @@ class test_GdbCtrl(GdbCtrl):
         addr,size_bytes = map(lambda x: int(x, 16), [addr, size_bytes])
         this.log.info('mem read: ' + hex(addr) + ' of ' + str(size_bytes))
         if size_bytes == 4:
-            return struct.pack('<I',0x46c046c0).encode('hex') #lit endian hex
+            return struct.pack('<I',0x46c046c0).hex() #lit endian hex
         else: 
-            return struct.pack('<H',0x46c).encode('hex') #lit endian hex
+            return struct.pack('<H',0x46c).hex() #lit endian hex
 
     def cmd_p(this, subcmd):
         reg = subcmd
         this.log.info('reg_read: ' + str(reg))
         val = 0x1234
-        val = struct.pack('<I',val).encode('hex') #lit endian hex
+        val = struct.pack('<I',val).hex() #lit endian hex
         val = '00' * this.regsPads[reg] + val # add some front-padding
         return val
 

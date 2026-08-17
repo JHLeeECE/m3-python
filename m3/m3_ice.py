@@ -1,38 +1,19 @@
 #!/usr/bin/env python
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 import time
 import os
 
 
-try: 
-    from __init__ import __version__
+from . import __version__
 
-    from m3_common import m3_common
-    from m3_common import mbus_snooper
-    from m3_common import ein_programmer
-    from m3_common import goc_programmer
+from .m3_common import m3_common
+from .m3_common import mbus_snooper
+from .m3_common import ein_programmer
+from .m3_common import goc_programmer
 
-    from m3_mbus import mbus_controller 
+from .m3_mbus import mbus_controller
 
-    import m3_logging
-except:
-    from . import __version__
-
-    from .m3_common import m3_common
-    from .m3_common import mbus_snooper
-    from .m3_common import ein_programmer
-    from .m3_common import goc_programmer
-
-    from .m3_mbus import mbus_controller 
-
-    from . import m3_logging
+from . import m3_logging
 
 logger = m3_logging.getLogger(__name__)
 

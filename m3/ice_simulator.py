@@ -1,12 +1,5 @@
 #!/usr/bin/env python
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 CAPABILITES = "?_dIifnOoBbMmeGgPp"
 MAX_GPIO = 24
 DEFAULT_BAUD_DIVIDER = 0x00AE
@@ -45,11 +38,11 @@ import threading
 import traceback
 
 try:
-    import m3_logging
-    from ice import ICE
-except:
     from . import m3_logging
     from .ice import ICE
+except ImportError:
+    import m3_logging
+    from ice import ICE
 
 logger = m3_logging.get_logger(__name__)
 
@@ -126,7 +119,7 @@ class Simulator(object):
             logger.error("  socat -x pty,link=/tmp/com1,raw,echo=0 pty,link=/tmp/com2,raw,echo=0")
             logger.error("")
             raise
-        if not self.s.isOpen():
+        if not self.s.is_open:
             logger.error('Could not open serial port at: ' + self.args.serial)
             raise IOError("Failed to open serial port")
 
@@ -253,13 +246,13 @@ class Simulator(object):
         Replays a series of ICE transactions with timing information
         '''
         def read_raw_message():
-            msg_type, event_id, length = self.s.read(3)
-            length_int = ord(length)
-            logger.debug("Got a message of type: " + msg_type + 
-                    ' length: ' + str(length_int))
-            msg = self.s.read(length_int)
+            header = self.s.read(3)
+            length = header[2]
+            logger.debug("Got a message of type: " + chr(header[0]) +
+                    ' length: ' + str(length))
+            msg = self.s.read(length)
 
-            return msg_type + event_id + length + msg
+            return header + msg
 
         logger.info("Transaction beginning")
         last_ts = None
@@ -284,11 +277,11 @@ class Simulator(object):
                 rxMsg = b''
 
                 rxMsg = read_raw_message()
-                logger.debug('Read: ' + binascii.hexlify(rxMsg))
-                logger.info(' vs  : ' + binascii.hexlify(data))
+                logger.debug('Read: ' + rxMsg.hex())
+                logger.info(' vs  : ' + data.hex())
                 if (rxMsg != data): 
-                    rx = binascii.hexlify(rxMsg)
-                    buf = binascii.hexlify(data) 
+                    rx = rxMsg.hex()
+                    buf = data.hex()
                     raise Exception('Read vs. Expect: ' + \
                             str(rx) + ' vs. ' + str(buf)  + \
                             ' ascii: ' + str(rx==buf))
@@ -299,7 +292,7 @@ class Simulator(object):
                 hex_tex = line.split('SEND')[1].strip()
                 hex_tex = hex_tex.replace('0x', '').lower()
                 data = binascii.unhexlify(hex_tex)
-                print ('SENDING: ' + binascii.hexlify(data))
+                print ('SENDING: ' + data.hex())
                 self.s.write(data)
                 self.s.flush()
 
@@ -333,10 +326,11 @@ class Simulator(object):
                     raise UnknownCommandException
 
             try:
-                msg_type, event_id, length = self.s.read(3)
+                header = self.s.read(3)
+                msg_type = chr(header[0])
                 logger.debug("Got a message of type: " + msg_type)
-                event_id = ord(event_id)
-                length = ord(length)
+                event_id = header[1]
+                length = header[2]
                 msg = self.s.read(length)
     
                 #slight hack to simplify respond()
@@ -365,27 +359,27 @@ class Simulator(object):
                         CLOCK_FREQ = 2e6
                         minor = 1
                     else:
-                        logger.error("Request for unknown version: " + msg)
+                        logger.error("Request for unknown version: " + msg.hex())
                         raise Exception
                     logger.info("Negotiated to protocol version 0."+ str(minor))
                     self.ack()
 
                 elif msg_type == '?':
                     min_proto(2)
-                    if msg[0] == '?':
+                    if msg[0] == ord('?'):
                         logger.info("Responded to query capabilites with " + CAPABILITES)
                         self.respond(CAPABILITES)
-                    elif msg[0] == 'b':
+                    elif msg[0] == ord('b'):
                         logger.info("Responded to query for ICE baudrate (divider: 0x%04X)" % (self.baud_divider))
                         self.respond(struct.pack('>H', self.baud_divider))
                     else:
-                        logger.error("Bad '?' subtype: " + msg[0])
+                        logger.error("Bad '?' subtype: %c", msg[0])
                         raise UnknownCommandException
                 elif msg_type == '_':
                     min_proto(2)
-                    if msg[0] == 'b':
-                        high = ord(msg[1])
-                        low = ord(msg[2])
+                    if msg[0] == ord('b'):
+                        high = msg[1]
+                        low = msg[2]
                         new_div = low | (high << 8)
                         if new_div not in (0x00AE, 0x000A, 0x0007):
                             logger.error("Bad baudrate divider: 0x%04X" % (new_div))
@@ -409,14 +403,14 @@ class Simulator(object):
                         self.baud_divider = new_div
                         logger.info("New baud divider set: " + str(self.baud_divider))
                     else:
-                        logger.error("bad '_' subtype: " + msg[0])
+                        logger.error("bad '_' subtype: %c", msg[0])
                         raise UnknownCommandException
                 elif msg_type == 'b':
                     min_proto(2)
                     self.mbus_msg += msg
                     if len(msg) != 255:
                         logger.info("Got a MBus message:")
-                        logger.info("   message: " + binascii.hexlify(self.mbus_msg))
+                        logger.info("   message: " + self.mbus_msg.hex())
                         self.mbus_msg = bytes()
                         if self.mbus_should_interrupt:
                             logger.info("Message would have interrupted")
@@ -432,16 +426,16 @@ class Simulator(object):
                 elif msg_type == 'd':
                     self.i2c_msg += msg
                     if not self.i2c_match:
-                        if not self.match_mask(ord(msg[0]), self.i2c_mask_ones, self.i2c_mask_zeros):
+                        if not self.match_mask(msg[0], self.i2c_mask_ones, self.i2c_mask_zeros):
                             logger.info("I2C address %02x did not match mask %02x %02x",
-                                    ord(msg[0]), self.i2c_mask_ones, self.i2c_mask_zeros)
+                                    msg[0], self.i2c_mask_ones, self.i2c_mask_zeros)
                             self.respond(struct.pack('B', 0), ack=False)
                             continue
                         self.i2c_match = True
                     if len(msg) != 255:
                         logger.info("Got i2c message:")
-                        logger.info("  addr: " + binascii.hexlify(self.i2c_msg[0:1]))
-                        logger.info("  data: " + binascii.hexlify(self.i2c_msg[1:]))
+                        logger.info("  addr: " + self.i2c_msg[0:1].hex())
+                        logger.info("  data: " + self.i2c_msg[1:].hex())
                         self.i2c_msg = bytes()
                         self.i2c_match = False
                     else:
@@ -452,7 +446,7 @@ class Simulator(object):
                     self.ein_msg += msg
                     if len(msg) != 255:
                         logger.info("Got a EIN message:")
-                        logger.info("  message: " + binascii.hexlify(self.ein_msg))
+                        logger.info("  message: " + self.ein_msg.hex())
                         self.ein_msg = bytes()
                     else:
                         logger.debug("Got EIN fragment")
@@ -461,7 +455,7 @@ class Simulator(object):
                     self.flow_msg += msg
                     if len(msg) != 255:
                         logger.info("Got f/n-type message in %s mode:", ('EIN','GOC')[ein_goc_toggle])
-                        logger.info("  message: " + binascii.hexlify(self.flow_msg))
+                        logger.info("  message: " + self.flow_msg.hex())
                         self.flow_msg = bytes()
                     else:
                         logger.debug("Got f/n-type fragment in %s mode", ('EIN','GOC')[ein_goc_toggle])
@@ -476,215 +470,215 @@ class Simulator(object):
                 elif msg_type == 'G':
                     # GPIO changed completely between v0.1 and v0.2
                     if minor == 1:
-                        if msg[0] == 'l':
-                            logger.info("Responded to request for GPIO %d Dir (%s)", ord(msg[1]), self.gpios[ord(msg[1])])
-                            self.respond(struct.pack("B", self.gpios[ord(msg[1])].level))
-                        elif msg[0] == 'd':
-                            logger.info("Responded to request for GPIO %d Level (%s)", ord(msg[1]), self.gpios[ord(msg[1])])
-                            self.respond(struct.pack("B", self.gpios[ord(msg[1])].direction))
+                        if msg[0] == ord('l'):
+                            logger.info("Responded to request for GPIO %d Dir (%s)", msg[1], self.gpios[msg[1]])
+                            self.respond(struct.pack("B", self.gpios[msg[1]].level))
+                        elif msg[0] == ord('d'):
+                            logger.info("Responded to request for GPIO %d Level (%s)", msg[1], self.gpios[msg[1]])
+                            self.respond(struct.pack("B", self.gpios[msg[1]].direction))
                         else:
-                            logger.error("bad 'G' subtype: " + msg[0])
+                            logger.error("bad 'G' subtype: %c", msg[0])
                             raise Exception
                     else:
-                        if msg[0] == 'l':
+                        if msg[0] == ord('l'):
                             mask = 0
                             for i in range(len(self.gpios)):
                                 mask |= (self.gpios[i].level << i)
                             logger.info("Responded to request for GPIO level mask (%06x)", mask)
                             self.respond(struct.pack('>I', mask)[1:])
-                        elif msg[0] == 'd':
+                        elif msg[0] == ord('d'):
                             mask = 0
                             for i in range(len(self.gpios)):
                                 mask |= (self.gpios[i].direction << i)
                             logger.info("Responded to request for GPIO direction mask (%06x)", mask)
                             self.respond(struct.pack('>I', mask)[1:])
-                        elif msg[0] == 'i':
+                        elif msg[0] == ord('i'):
                             mask = 0
                             for i in range(len(self.gpios)):
                                 mask |= (self.gpios[i].interrupt << i)
                             logger.info("Responded to request for GPIO interrupt mask (%06x)", mask)
                             self.respond(struct.pack('>I', mask)[1:])
                         else:
-                            logger.error("bad 'G' subtype: " + msg[0])
+                            logger.error("bad 'G' subtype: %c", msg[0])
                             raise Exception
                 elif msg_type == 'g':
                     # GPIO changed completely between v0.1 and v0.2
                     if minor == 1:
-                        if msg[0] == 'l':
-                            self.gpios[ord(msg[1])].level = (ord(msg[2]) == True)
-                            logger.info("Set GPIO %d Level: %s", ord(msg[1]), self.gpios[ord(msg[1])])
+                        if msg[0] == ord('l'):
+                            self.gpios[msg[1]].level = (msg[2] == True)
+                            logger.info("Set GPIO %d Level: %s", msg[1], self.gpios[msg[1]])
                             self.ack()
-                        elif msg[0] == 'd':
-                            self.gpios[ord(msg[1])].direction = ord(msg[2])
-                            logger.info("Set GPIO %d Dir: %s", ord(msg[1]), self.gpios[ord(msg[1])])
+                        elif msg[0] == ord('d'):
+                            self.gpios[msg[1]].direction = msg[2]
+                            logger.info("Set GPIO %d Dir: %s", msg[1], self.gpios[msg[1]])
                             self.ack()
                         else:
-                            logger.error("bad 'g' subtype: " + msg[0])
+                            logger.error("bad 'g' subtype: %c", msg[0])
                             raise Exception
                     else:
-                        if msg[0] == 'l':
-                            high,mid,low = map(ord, msg[1:])
+                        if msg[0] == ord('l'):
+                            high,mid,low = msg[1:]
                             mask = low | mid << 8 | high << 16
                             for i in range(24):
                                 self.gpios[i].level = (mask >> i) & 0x1
                             logger.info("Set GPIO level mask to: %06x", mask)
                             self.ack()
-                        elif msg[0] == 'd':
-                            high,mid,low = map(ord, msg[1:])
+                        elif msg[0] == ord('d'):
+                            high,mid,low = msg[1:]
                             mask = low | mid << 8 | high << 16
                             for i in range(24):
                                 self.gpios[i].direction = (mask >> i) & 0x1
                             logger.info("Set GPIO direction mask to: %06x", mask)
                             self.ack()
-                        elif msg[0] == 'i':
-                            high,mid,low = map(ord, msg[1:])
+                        elif msg[0] == ord('i'):
+                            high,mid,low = msg[1:]
                             mask = low | mid << 8 | high << 16
                             for i in range(24):
                                 self.gpios[i].interrupt = (mask >> i) & 0x1
                             logger.info("Set GPIO interrupt mask to: %06x", mask)
                             self.ack()
                         else:
-                            logger.error("bad 'g' subtype: " + msg[0])
+                            logger.error("bad 'g' subtype: %c", msg[0])
                             raise Exception
                 elif msg_type == 'I':
-                    if msg[0] == 'c':
+                    if msg[0] == ord('c'):
                         logger.info("Responded to query for I2C bus speed (%d kHz)", self.i2c_speed_in_khz)
                         self.respond(struct.pack("B", self.i2c_speed_in_khz // 2))
-                    elif msg[0] == 'a':
+                    elif msg[0] == ord('a'):
                         logger.info("Responded to query for ICE I2C mask (%02x ones %02x zeros)",
                                 self.i2c_mask_ones, self.i2c_mask_zeros)
                         self.respond((self.i2c_mask_ones, self.i2c_mask_zeros))
                     else:
-                        logger.error("bad 'I' subtype: " + msg[0])
+                        logger.error("bad 'I' subtype: %c", msg[0])
                         raise Exception
                 elif msg_type == 'i':
-                    if msg[0] == 'c':
-                        self.i2c_speed_in_khz = ord(msg[1]) * 2
+                    if msg[0] == ord('c'):
+                        self.i2c_speed_in_khz = msg[1] * 2
                         logger.info("I2C Bus Speed set to %d kHz", self.i2c_speed_in_khz)
                         self.ack()
-                    elif msg[0] == 'a':
-                        self.i2c_mask_ones = ord(msg[1])
-                        self.i2c_mask_zeros = ord(msg[2])
+                    elif msg[0] == ord('a'):
+                        self.i2c_mask_ones = msg[1]
+                        self.i2c_mask_zeros = msg[2]
                         logger.info("ICE I2C mask set to 0x%02x ones, 0x%02x zeros",
                                 self.i2c_mask_ones, self.i2c_mask_zeros)
                         self.ack()
                     else:
-                        logger.error("bad 'i' subtype: " + msg[0])
+                        logger.error("bad 'i' subtype: %c", msg[0])
                         raise Exception
                 elif msg_type == 'M':
                     min_proto(2)
-                    if msg[0] == 'l':
+                    if msg[0] == ord('l'):
                         logger.info("Responded to query for MBus full prefix mask (%06x ones %06x zeros)",
                                 self.mbus_full_prefix_ones, self.mbus_full_prefix_zeros)
                         r = struct.pack('>I', self.mbus_full_prefix_ones)[1:]
                         r += struct.pack('>I', self.mbus_full_prefix_zeros)[1:]
                         self.respond(r)
-                    elif msg[0] == 's':
+                    elif msg[0] == ord('s'):
                         logger.info("Responded to query for MBus short prefix (%02x)",
                                 self.mbus_short_prefix)
                         self.respond(struct.pack("B", self.mbus_short_prefix))
-                    elif msg[0] == 'S':
+                    elif msg[0] == ord('S'):
                         logger.info("Responded to query for MBus snoop enabled (%d)",
                                 self.mbus_snoop_enabled)
                         self.respond(struct.pack("B", self.mbus_snoop_enabled))
-                    elif msg[0] == 'b':
+                    elif msg[0] == ord('b'):
                         logger.info("Responded to query for MBus broadcast mask (%02x ones %02x zeros)",
                                 self.mbus_broadcast_mask_ones, self.mbus_broadcast_mask_zeros)
                         self.respond(struct.pack("BB",
                             self.mbus_broadcast_mask_ones,
                             self.mbus_broadcast_mask_zeros))
-                    elif msg[0] == 'B':
+                    elif msg[0] == ord('B'):
                         logger.info("Responded to query for MBus snoop broadcast mask (%02x ones %02x zeros)",
                                 self.mbus_snoop_broadcast_mask_ones, self.mbus_snoop_broadcast_mask_zeros)
                         self.respond(struct.pack("BB",
                             self.mbus_snoop_broadcast_mask_ones,
                             self.mbus_snoop_broadcast_mask_zeros))
-                    elif msg[0] == 'm':
+                    elif msg[0] == ord('m'):
                         logger.info("Responded to query for MBus master state (%s)",
                                 ("off", "on")[self.mbus_ismaster])
                         self.respond(struct.pack("B", self.mbus_ismaster))
-                    elif msg[0] == 'c':
+                    elif msg[0] == ord('c'):
                         raise NotImplementedError("MBus clock not defined")
-                    elif msg[0] == 'i':
+                    elif msg[0] == ord('i'):
                         logger.info("Responded to query for MBus should interrupt (%d)",
                                 self.mbus_should_interrupt)
                         self.respond(struct.pack("B", self.mbus_should_interrupt))
-                    elif msg[0] == 'p':
+                    elif msg[0] == ord('p'):
                         logger.info("Responded to query for MBus should use priority arb (%d)",
                                 self.mbus_should_prio)
                         self.respond(struct.pack("B", self.mbus_should_prio))
-                    elif msg[0] == 'r':
+                    elif msg[0] == ord('r'):
                         logger.info("Responded to query for MBus internal reset (%d)",
                                 self.mbus_force_reset)
                         self.respond(struct.pack("B", self.mbus_force_reset))
                     else:
-                        logger.error("bad 'M' subtype: " + msg[0])
+                        logger.error("bad 'M' subtype: %c", msg[0])
                 elif msg_type == 'm':
                     min_proto(2)
-                    if msg[0] == 'l':
-                        self.mbus_full_prefix_ones = ord(msg[3])
-                        self.mbus_full_prefix_ones |= ord(msg[2]) << 8
-                        self.mbus_full_prefix_ones |= ord(msg[1]) << 16
-                        self.mbus_full_prefix_zeros = ord(msg[6])
-                        self.mbus_full_prefix_zeros |= ord(msg[5]) << 8
-                        self.mbus_full_prefix_zeros |= ord(msg[4]) << 16
+                    if msg[0] == ord('l'):
+                        self.mbus_full_prefix_ones = msg[3]
+                        self.mbus_full_prefix_ones |= msg[2] << 8
+                        self.mbus_full_prefix_ones |= msg[1] << 16
+                        self.mbus_full_prefix_zeros = msg[6]
+                        self.mbus_full_prefix_zeros |= msg[5] << 8
+                        self.mbus_full_prefix_zeros |= msg[4] << 16
                         logger.info("MBus full prefix mask set to ones %06x zeros %06x",
                                 self.mbus_full_prefix_ones, self.mbus_full_prefix_zeros)
                         self.ack()
-                    elif msg[0] == 's':
-                        self.mbus_short_prefix = ord(msg[1])
+                    elif msg[0] == ord('s'):
+                        self.mbus_short_prefix = msg[1]
                         logger.info("MBus short prefix set to %02x", self.mbus_short_prefix)
                         self.ack()
-                    elif msg[0] == 'S':
-                        self.mbus_snoop_enabled = ord(msg[1])
+                    elif msg[0] == ord('S'):
+                        self.mbus_snoop_enabled = msg[1]
                         if self.mbus_snoop_enabled:
                             self.s_en_event.set()
                         logger.info("MBus snoop enabled set to %d", self.mbus_snoop_enabled)
                         self.ack()
-                    elif msg[0] == 'b':
-                        self.mbus_broadcast_mask_ones = ord(msg[1])
-                        self.mbus_broadcast_mask_zeros = ord(msg[2])
+                    elif msg[0] == ord('b'):
+                        self.mbus_broadcast_mask_ones = msg[1]
+                        self.mbus_broadcast_mask_zeros = msg[2]
                         logger.info("MBus broadcast mask set to ones %02x zeros %02x",
                                 self.mbus_broadcast_mask_ones, self.mbus_broadcast_mask_zeros)
                         self.ack()
-                    elif msg[0] == 'B':
-                        self.mbus_snoop_broadcast_mask_ones = ord(msg[1])
-                        self.mbus_snoop_broadcast_mask_zeros = ord(msg[2])
+                    elif msg[0] == ord('B'):
+                        self.mbus_snoop_broadcast_mask_ones = msg[1]
+                        self.mbus_snoop_broadcast_mask_zeros = msg[2]
                         logger.info("MBus snoop broadcast mask set to ones %02x zeros %02x",
                                 self.mbus_snoop_broadcast_mask_ones, self.mbus_snoop_broadcast_mask_zeros)
                         self.ack()
-                    elif msg[0] == 'm':
-                        self.mbus_ismaster = bool(ord(msg[1]))
+                    elif msg[0] == ord('m'):
+                        self.mbus_ismaster = bool(msg[1])
                         logger.info("MBus master mode set " + ("off", "on")[self.mbus_ismaster])
                         self.ack()
-                    elif msg[0] == 'c':
+                    elif msg[0] == ord('c'):
                         raise NotImplementedError("MBus clock not defined")
-                    elif msg[0] == 'i':
-                        self.mbus_should_interrupt = ord(msg[1])
+                    elif msg[0] == ord('i'):
+                        self.mbus_should_interrupt = msg[1]
                         logger.info("MBus should interrupt set to %d", self.mbus_should_interrupt)
                         self.ack()
-                    elif msg[0] == 'p':
-                        self.mbus_should_prio = ord(msg[1])
+                    elif msg[0] == ord('p'):
+                        self.mbus_should_prio = msg[1]
                         logger.info("MBus should use priority arbitration set to %d",
                                 self.mbus_should_prio)
                         self.ack()
-                    elif msg[0] == 'r':
-                        self.mbus_force_reset = ord(msg[1])
+                    elif msg[0] == ord('r'):
+                        self.mbus_force_reset = msg[1]
                         logger.info("MBus internal reset set to %d", self.mbus_force_reset)
                         self.ack()
                     else:
-                        logger.error("bad 'm' subtype: " + msg[0])
+                        logger.error("bad 'm' subtype: %c", msg[0])
                 elif msg_type == 'O':
-                    if msg[0] == 'c':
+                    if msg[0] == ord('c'):
                         logger.info("Responded to query for FLOW clock (%.2f Hz)", self.flow_clock_in_hz)
                         div = int(CLOCK_FREQ / self.flow_clock_in_hz)
-                        resp = ''
+                        resp = b''
                         if minor >= 3:
                             resp = struct.pack(">I", div)
                         else:
                             resp = struct.pack(">I", div)[1:]
                         self.respond(resp)
-                    elif msg[0] == 'o':
+                    elif msg[0] == ord('o'):
                         if minor > 1:
                             logger.info("Responded to query for FLOW power (%s)", ('off','on')[self.flow_onoff])
                             self.respond(struct.pack("B", self.flow_onoff))
@@ -692,103 +686,103 @@ class Simulator(object):
                             logger.error("Request for protocol 0.2 command (Oo), but the")
                             logger.error("negotiated protocol was 0.1")
                     else:
-                        logger.error("bad 'O' subtype: " + msg[0])
+                        logger.error("bad 'O' subtype: %c", msg[0])
                 elif msg_type == 'o':
-                    if msg[0] == 'c':
+                    if msg[0] == ord('c'):
                         if minor >= 3:
-                            div = (ord(msg[1]) << 24) | (ord(msg[2]) << 16) | (ord(msg[3]) << 8) | ord(msg[4])
+                            div = (msg[1] << 24) | (msg[2] << 16) | (msg[3] << 8) | msg[4]
                         else:
-                            div = (ord(msg[1]) << 16) | (ord(msg[2]) << 8) | ord(msg[3])
+                            div = (msg[1] << 16) | (msg[2] << 8) | msg[3]
                         self.flow_clock_in_hz = CLOCK_FREQ / div
                         logger.info("Set FLOW clock to %.2f Hz", self.flow_clock_in_hz)
                         self.ack()
-                    elif msg[0] == 'o':
+                    elif msg[0] == ord('o'):
                         min_proto(2)
                         if minor > 1:
-                            self.flow_onoff = bool(ord(msg[1]))
+                            self.flow_onoff = bool(msg[1])
                             logger.info("Set FLOW power to %s", ('off','on')[self.flow_onoff])
                             self.ack()
-                    elif msg[0] == 'p':
+                    elif msg[0] == ord('p'):
                         min_proto(2)
-                        ein_goc_toggle = bool(ord(msg[1]))
+                        ein_goc_toggle = bool(msg[1])
                         logger.info("Set GOC/EIN toggle to %s mode", ('EIN','GOC')[ein_goc_toggle])
                         self.ack()
                     else:
                         assert False
-                        logger.error("bad 'o' subtype: " + msg[0])
+                        logger.error("bad 'o' subtype: %c", msg[0])
                         assert False
                 elif msg_type == 'P':
-                    pwr_idx = ord(msg[1])
+                    pwr_idx = msg[1]
                     if pwr_idx not in (0,1,2):
                         logger.error("Illegal power index: %d", pwr_idx)
                         raise Exception
-                    if msg[0] == 'v':
-                        if pwr_idx is 0:
+                    if msg[0] == ord('v'):
+                        if pwr_idx == 0:
                             logger.info("Query 0.6V rail (vset=%d, vout=%.2f)", self.vset_0p6,
                                     (0.537 + 0.0185 * self.vset_0p6) * DEFAULT_POWER_0P6)
                             self.respond(struct.pack("BB", pwr_idx, self.vset_0p6))
-                        elif pwr_idx is 1:
+                        elif pwr_idx == 1:
                             logger.info("Query 1.2V rail (vset=%d, vout=%.2f)", self.vset_1p2,
                                     (0.537 + 0.0185 * self.vset_1p2) * DEFAULT_POWER_1P2)
                             self.respond(struct.pack("BB", pwr_idx, self.vset_1p2))
-                        elif pwr_idx is 2:
+                        elif pwr_idx == 2:
                             logger.info("Query VBatt rail (vset=%d, vout=%.2f)", self.vset_vbatt,
                                     (0.537 + 0.0185 * self.vset_vbatt) * DEFAULT_POWER_VBATT)
                             self.respond(struct.pack("BB", pwr_idx, self.vset_vbatt))
-                    elif msg[0] == 'o':
-                        if pwr_idx is 0:
+                    elif msg[0] == ord('o'):
+                        if pwr_idx == 0:
                             logger.info("Query 0.6V rail (%s)", ('off','on')[self.power_0p6_on])
                             self.respond(struct.pack("B", self.power_0p6_on))
-                        elif pwr_idx is 1:
+                        elif pwr_idx == 1:
                             logger.info("Query 1.2V rail (%s)", ('off','on')[self.power_1p2_on])
                             self.respond(struct.pack("B", self.power_1p2_on))
-                        elif pwr_idx is 2:
+                        elif pwr_idx == 2:
                             logger.info("Query vbatt rail (%s)", ('off','on')[self.power_vbatt_on])
                             self.respond(struct.pack("B", self.power_vbatt_on))
-                        elif pwr_idx is 3:
+                        elif pwr_idx == 3:
                             logger.info("Query goc rail (%s)", ('off','on')[self.power_goc_on])
                             self.respond(struct.pack("B", self.power_goc_on))
                     else:
-                        logger.error("bad 'p' subtype: " + msg[0])
+                        logger.error("bad 'p' subtype: %c", msg[0])
                         raise Exception
                 elif msg_type == 'p':
-                    pwr_idx = ord(msg[1])
-                    if msg[0] == 'v':
-                        if pwr_idx is ICE.POWER_0P6:
-                            self.vset_0p6 = ord(msg[2])
+                    pwr_idx = msg[1]
+                    if msg[0] == ord('v'):
+                        if pwr_idx == ICE.POWER_0P6:
+                            self.vset_0p6 = msg[2]
                             logger.info("Set 0.6V rail to vset=%d, vout=%.2f", self.vset_0p6,
                                     (0.537 + 0.0185 * self.vset_0p6) * DEFAULT_POWER_0P6)
-                        elif pwr_idx is ICE.POWER_1P2:
-                            self.vset_1p2 = ord(msg[2])
+                        elif pwr_idx == ICE.POWER_1P2:
+                            self.vset_1p2 = msg[2]
                             logger.info("Set 1.2V rail to vset=%d, vout=%.2f", self.vset_1p2,
                                     (0.537 + 0.0185 * self.vset_1p2) * DEFAULT_POWER_1P2)
-                        elif pwr_idx is ICE.POWER_VBATT:
-                            self.vset_vbatt = ord(msg[2])
+                        elif pwr_idx == ICE.POWER_VBATT:
+                            self.vset_vbatt = msg[2]
                             logger.info("Set VBatt rail to vset=%d, vout=%.2f", self.vset_vbatt,
                                     (0.537 + 0.0185 * self.vset_vbatt) * DEFAULT_POWER_VBATT)
                         else:
                             logger.error("Illegal power index: %d", pwr_idx)
                             raise Exception
                         self.ack()
-                    elif msg[0] == 'o':
-                        if pwr_idx is ICE.POWER_0P6:
-                            self.power_0p6_on = bool(ord(msg[2]))
+                    elif msg[0] == ord('o'):
+                        if pwr_idx == ICE.POWER_0P6:
+                            self.power_0p6_on = bool(msg[2])
                             logger.info("Set 0.6V rail %s", ('off','on')[self.power_0p6_on])
-                        elif pwr_idx is ICE.POWER_1P2:
-                            self.power_1p2_on = bool(ord(msg[2]))
+                        elif pwr_idx == ICE.POWER_1P2:
+                            self.power_1p2_on = bool(msg[2])
                             logger.info("Set 1.2V rail %s", ('off','on')[self.power_1p2_on])
-                        elif pwr_idx is ICE.POWER_VBATT:
-                            self.power_vbatt_on = bool(ord(msg[2]))
+                        elif pwr_idx == ICE.POWER_VBATT:
+                            self.power_vbatt_on = bool(msg[2])
                             logger.info("Set VBatt rail %s", ('off','on')[self.power_vbatt_on])
-                        elif minor >= 3 and pwr_idx is ICE.POWER_GOC:
-                            self.power_goc_on = bool(ord(msg[2]))
+                        elif minor >= 3 and pwr_idx == ICE.POWER_GOC:
+                            self.power_goc_on = bool(msg[2])
                             logger.info("Set GOC circuit %s", ('off','on')[self.power_goc_on])
                         else:
                             logger.error("Illegal power index: %d", pwr_idx)
                             raise Exception
                         self.ack()
                     else:
-                        logger.error("bad 'p' subtype: " + msg[0])
+                        logger.error("bad 'p' subtype: %c", msg[0])
                         raise UnknownCommandException
                 else:
                     logger.error("Unknown msg type: " + msg_type)
@@ -809,6 +803,11 @@ class Simulator(object):
                 raise
 
     def respond(self, msg, ack=True):
+        if isinstance(msg, str):
+            msg = msg.encode('ascii')
+        elif not isinstance(msg, bytes):
+            msg = bytes(msg)
+
         with self.s_lock:
             if (ack):
                 self.s.write(bytes((0,)))
@@ -819,18 +818,15 @@ class Simulator(object):
             self.event %= 256
             self.s.write(bytes((len(msg),)))
 
-            if type(msg) != bytes:
-                msg = bytes(msg, 'utf-8')
-
             if len(msg):
                 self.s.write(msg)
         logger.debug("Sent a response of length: " + str(len(msg)))
 
     def ack(self):
-        self.respond('')
+        self.respond(b'')
 
     def nak(self):
-        self.respond('', ack=False)
+        self.respond(b'', ack=False)
 
 
     @staticmethod
@@ -909,13 +905,13 @@ class Gpio(object):
         return self.__str__()
 
     def __setattr__(self, name, value):
-        if name is 'direction':
+        if name == 'direction':
             if value not in (Gpio.GPIO_INPUT, Gpio.GPIO_OUTPUT, Gpio.GPIO_TRISTATE):
                 raise ValueError("Attempt to set illegal direction {}".format(value))
-        if name is 'level':
+        if name == 'level':
             if value not in (True, False):
                 raise ValueError("GPIO level must be true or false. Got {}".format(value))
-        if name is 'interrupt':
+        if name == 'interrupt':
             if value not in (True, False):
                 raise ValueError("GPIO interrupt must be true or false. Got {}".format(value))
         object.__setattr__(self, name, value)

@@ -95,9 +95,9 @@ if __name__ == '__main__':
     result = nose.run( defaultTest=__name__, )
 
     if result == True:
-        print 'TESTS PASSED'
+        print('TESTS PASSED')
     else:
-        print 'TESTS FAILED'
+        print('TESTS FAILED')
 
 
     logger.info('')

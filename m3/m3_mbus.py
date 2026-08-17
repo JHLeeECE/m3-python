@@ -14,13 +14,6 @@
 
 
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 import argparse
 import atexit
 import binascii
@@ -40,12 +33,8 @@ import struct
 # if Py2K:
 import imp
 
-try:
-    from __init__ import __version__ 
-    import m3_logging
-except:
-    from . import __version__ 
-    from . import m3_logging
+from . import __version__
+from . import m3_logging
 
 logger = m3_logging.getLogger(__name__)
  
@@ -496,7 +485,7 @@ class mbus_controller( object):
             #mbus_addr = struct.pack(">I", mbus_long_addr)
         else: raise Exception("Bad MBUS Addr")
 
-        logger.debug('MBus_PRC_Addr: ' + binascii.hexlify(mbus_addr))
+        logger.debug('MBus_PRC_Addr: ' + binascii.hexlify(mbus_addr).decode('ascii'))
 
         # 0x0 = mbus register write
         mbus_regwr = struct.pack(">I", ( prc_addr << 4) | 0x0 ) 
@@ -540,9 +529,9 @@ class mbus_controller( object):
         for mem_addr, payload in zip(payload_addrs, payload_chunks):
 
             mem_addr = struct.pack(">I", mem_addr)
-            logger.debug('Mem Addr: ' + binascii.hexlify(mem_addr))
+            logger.debug('Mem Addr: ' + binascii.hexlify(mem_addr).decode('ascii'))
 
-            logger.debug('Payload: ' + binascii.hexlify(payload))
+            logger.debug('Payload: ' + binascii.hexlify(payload).decode('ascii'))
 
             data = mem_addr + payload 
             #logger.debug( 'data: ' + binascii.hexlify(data ))
@@ -585,7 +574,7 @@ class mbus_controller( object):
             '''
             def run(this): pass
             def get(this):
-                s = raw_input("<: ")
+                s = input("<: ")
                 if len(s) == 1:
                     return s[0], (), {}
                 elif s[0] == '_':

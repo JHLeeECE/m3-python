@@ -1,12 +1,5 @@
 #!/usr/bin/env python
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 import argparse
 import atexit
 import binascii
@@ -26,16 +19,10 @@ import threading
 # if Py2K:
 import imp
 
-try:
-    from __init__ import __version__ 
-    import m3_logging
-    from ice import ICE
-    from ice_simulator import _FAKE_SERIAL_CONNECTTO_ENDPOINT
-except:
-    from . import __version__ 
-    from . import m3_logging
-    from .ice import ICE
-    from .ice_simulator import _FAKE_SERIAL_CONNECTTO_ENDPOINT
+from . import __version__
+from . import m3_logging
+from .ice import ICE
+from .ice_simulator import _FAKE_SERIAL_CONNECTTO_ENDPOINT
 
 logger = m3_logging.getLogger(__name__)
 
@@ -70,8 +57,7 @@ class m3_common(object):
         if self.args.yes:
             fn = print
         else:
-            try: fn = raw_input
-            except NameError: fn = input #Py3 version
+            fn = input
         if extra:
             r = fn(prompt + ' [' + default + extra + ']: ')
         else:
@@ -596,10 +582,6 @@ class m3_common(object):
                 for i in range(len(candidates)):
                     logger.info("\t[{}] {}".format(i, candidates[i]))
                 try:
-                    resp = raw_input("Choose a serial port "\
-                                "(Ctrl-C to quit): ").strip()
-                except NameError:  
-                    #Py3
                     resp = input("Choose a serial port "\
                                 "(Ctrl-C to quit): ").strip()
                 except KeyboardInterrupt:
@@ -631,7 +613,7 @@ class m3_common(object):
                 hexencoded += line[0:2].upper()
         else:
             binfd = open(binfile, 'rb')
-            hexencoded = binascii.hexlify(binfd.read()).upper()
+            hexencoded = binascii.hexlify(binfd.read()).decode('ascii').upper()
 
         if (len(hexencoded) % 2 == 0) and (len(hexencoded) % 4 != 0):
             hexencoded += '00' # use of 8-bit variables can lead to byte-aligned bin files
@@ -872,7 +854,7 @@ class goc_programmer(object):
         # TODO: The encode/decode at various points is a bit silly?
         data = binascii.unhexlify(data)
         data = data[::-1]
-        data = binascii.hexlify(data)
+        data = binascii.hexlify(data).decode('ascii')
 
         if self.m3_ice.args.dont_run_after:
             run_after = False
@@ -1167,7 +1149,7 @@ class mbus_programmer( object):
             #mbus_addr = struct.pack(">I", mbus_long_addr)
         else: raise Exception("Bad MBUS Addr")
 
-        logger.info('MBus_PRC_Addr: ' + binascii.hexlify(mbus_addr))
+        logger.info('MBus_PRC_Addr: ' + binascii.hexlify(mbus_addr).decode('ascii'))
 
         # 0x0 = mbus register write
         mbus_regwr = struct.pack(">I", ( prc_addr << 4) | 0x0 ) 
@@ -1210,9 +1192,9 @@ class mbus_programmer( object):
         for mem_addr, payload in zip(payload_addrs, payload_chunks):
 
             mem_addr = struct.pack(">I", mem_addr)
-            logger.debug('Mem Addr: ' + binascii.hexlify(mem_addr))
+            logger.debug('Mem Addr: ' + binascii.hexlify(mem_addr).decode('ascii'))
 
-            logger.debug('Payload: ' + binascii.hexlify(payload))
+            logger.debug('Payload: ' + binascii.hexlify(payload).decode('ascii'))
 
             data = mem_addr + payload 
             #logger.debug( 'data: ' + binascii.hexlify(data ))
@@ -1299,12 +1281,12 @@ class mbus_snooper(object):
 
     def callback_print(self, _time, address, data, cb0, cb1):
         print("@ Time: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(_time))
-                + "  ADDR: 0x" + binascii.hexlify(address)
-                + "  DATA: 0x" + binascii.hexlify(data)
+                + "  ADDR: 0x" + binascii.hexlify(address).decode('ascii')
+                + "  DATA: 0x" + binascii.hexlify(data).decode('ascii')
                 + "  (ACK: " + str(not cb1) + ")")
 
     def callback_csv(self, _time, address, data, cb0, cb1):
-        self._csv_writer.writerow((_time, binascii.hexlify(address), binascii.hexlify(data), cb0, cb1))
+        self._csv_writer.writerow((_time, binascii.hexlify(address).decode('ascii'), binascii.hexlify(data).decode('ascii'), cb0, cb1))
 
     def __init__(self, args, ice, callbacks=None):
         self.args = args
@@ -1316,7 +1298,7 @@ class mbus_snooper(object):
             self.callbacks.append(self.callback_print)
 
         if self.args.csv is not None:
-            self._csv_file = open(self.args.csv, 'wb')
+            self._csv_file = open(self.args.csv, 'w', newline="")
             self._csv_writer = csv.writer(self._csv_file)
             self.callbacks.append(self.callback_csv)
 

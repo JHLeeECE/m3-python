@@ -2,18 +2,12 @@
 
 ################################################################################
 
-# Coerce Py2k to act more like Py3k
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-from builtins import (
-        ascii, bytes, chr, dict, filter, hex, input, int, isinstance, list, map,
-        next, object, oct, open, pow, range, round, str, super, zip,
-        )
-
 import binascii
 from copy import copy
 from copy import deepcopy
 import errno
 import functools
+import logging
 import socket
 import struct
 import sys
@@ -22,7 +16,7 @@ import os
 
 try:
     from . import m3_logging
-except:
+except ImportError:
     import m3_logging
 logger = m3_logging.getLogger(__name__)
 
@@ -52,7 +46,7 @@ except ImportError:
 
 class ICE(object):
     VERSIONS = ((0,1),(0,2),(0,3),(0,4),(0,5))
-    ONEYEAR = 365 * 24 * 60 * 60
+    ONEYEAR = min(365 * 24 * 60 * 60, threading.TIMEOUT_MAX)
 
     class ICE_Error(Exception):
         '''
@@ -223,7 +217,7 @@ class ICE(object):
         with serial.Serial(serial_device, baudrates[0], 
                     timeout=0.05 ) as tmpSerial:
 
-            if not tmpSerial.isOpen():
+            if not tmpSerial.is_open:
                 raise self.ICE_Error("Failed to connect to temporary serial device")
 
             for baudrate in baudrates:
@@ -266,7 +260,7 @@ class ICE(object):
             logger.warn("Skipping baudrate?")
             self.dev = serial.Serial(serial_device, timeout=0.5)
 
-        if self.dev.isOpen():
+        if self.dev.is_open:
             logger.info("Connected to serial device at " + self.dev.portstr + 
                 " at " + str(baudrate) + " baud")
         else:
@@ -320,14 +314,14 @@ class ICE(object):
                 logger.warn("WARNING: No handler registered for message type: " +
                         str(msg_type))
                 logger.warn("Known Types:")
-                for t,f in self.msg_handler.iteritems():
+                for t,f in self.msg_handler.items():
                     logger.warn("%s\t%s" % (t, str(f)))
                 logger.warn("         Dropping packet:")
                 logger.warn("")
                 logger.warn("    Type: %s" % (msg_type))
                 logger.warn("Event ID: %d" % (event_id))
                 logger.warn("  Length: %d" % (length))
-                logger.warn(" Message:" + msg.encode('hex'))
+                logger.warn(" Message:" + msg.hex())
             except Exception as e:
                 logger.warn("Unhandled exception trying to report unknown message.")
                 logger.warn(str(e))
@@ -345,7 +339,7 @@ class ICE(object):
                 logger.debug("    Type: %s" % (msg_type))
                 logger.debug("Event ID: %d" % (event_id))
                 logger.debug("  Length: %d" % (length))
-                logger.debug(" Message:" + msg.encode('hex'))
+                logger.debug(" Message:" + msg.hex())
             except Exception as e:
                 logger.debug("Unhandled exception trying to report unknown message.")
                 logger.debug(str(e))
@@ -363,11 +357,11 @@ class ICE(object):
                 rxBuf += rx
     
         assert len(rxBuf) == length
-        logger.debug('Raw Read: ' + binascii.hexlify(rxBuf) )
+        logger.debug('Raw Read: ' + rxBuf.hex())
         return rxBuf 
        
     def communicator(self):
-        while not self.communicator_stop_request.isSet():
+        while not self.communicator_stop_request.is_set():
             try:
                 # Read has a timeout of .1 s. Polling is the easiest way to
                 # do x-platform cancellation
@@ -376,16 +370,13 @@ class ICE(object):
                 continue
             except (serial.SerialException, OSError):
                 break
-            msg_type = ord(msg_type)
-            event_id = ord(event_id)
-            length = ord(length)
             #print("Got msg type", msg_type, chr(msg_type), length)
             try:
                 msg = self.useful_read(length, check_timeout = True)
             except self.TimeoutError:
                 logger.warn("Timeout error occured, skipping rest of packet!")
                 continue
-            #print(msg.encode('hex'))
+            #print(msg.hex())
 
             if event_id == self.last_event_id:
                 logger.warn("WARNING: Duplicate event_id! THIS IS A BUG [somewhere]!!")
@@ -394,7 +385,7 @@ class ICE(object):
                 logger.warn("    Type: %d" % (msg_type))
                 logger.warn("Event ID: %d" % (event_id))
                 logger.warn("  Length: %d" % (length))
-                logger.warn(" Message:" + msg.encode('hex'))
+                logger.warn(" Message:" + msg.hex())
             else:
                 self.last_event_id = event_id
 
@@ -413,7 +404,7 @@ class ICE(object):
                     logger.warn("    Type: %s" % (["ACK","NAK"][msg_type]))
                     logger.warn("Event ID: %d" % (event_id))
                     logger.warn("  Length: %d" % (length))
-                    logger.warn(" Message:" + msg.encode('hex'))
+                    logger.warn(" Message:" + msg.hex())
             else:
                 msg_type = chr(msg_type)
                 logger.debug("Got an async message of type: " + msg_type)
@@ -577,9 +568,9 @@ class ICE(object):
             try:
                 logger.warn("No handler registered for B++ (formatted, snooped MBus) messages")
                 logger.warn("Dropping message:")
-                logger.warn("\taddr: " + binascii.hexlify(addr))
-                logger.warn("\tdata: " + binascii.hexlify(data))
-                logger.warn("\tstat: " + binascii.hexlify(cb))
+                logger.warn("\taddr: " + addr.hex())
+                logger.warn("\tdata: " + data.hex())
+                logger.warn("\tstat: " + msg[-1:].hex())
                 logger.warn("")
             except Exception as e:
                 logger.warn("Unhandled exception trying to report missing B++ handler.")
@@ -647,8 +638,8 @@ class ICE(object):
 
         logger.debug("Sending version probe")
         resp = self.send_message_until_acked('V')
-        if (len(resp) is 0) or (len(resp) % 2):
-            raise self.FormatError("Version response: " + resp)
+        if (len(resp) == 0) or (len(resp) % 2):
+            raise self.FormatError("Version response: {}".format(resp))
 
         logger.info("This ICE board supports versions...")
         self.major = None
@@ -748,7 +739,7 @@ class ICE(object):
         characters from the ICE board, which requires the caller to know the
         ICE protocol.
         '''
-        resp = self.send_message_until_acked('?', struct.pack("B", ord('?')))
+        resp = self.send_message_until_acked('?', struct.pack("B", ord('?'))).decode('ascii')
         self.capabilities = resp
         return resp
 
@@ -890,7 +881,7 @@ class ICE(object):
         resp = self.send_message_until_acked('O', struct.pack("B", ord('c')))
         if len(resp) != 3:
             raise self.FormatError("Wrong response length from `Oc': " + str(resp))
-        setting = struct.unpack("!I", "\x00"+resp)[0]
+        setting = struct.unpack("!I", b"\x00"+resp)[0]
         return setting
 
     @min_proto_version("0.3")
@@ -911,7 +902,7 @@ class ICE(object):
     @max_proto_version("0.2")
     def goc_ein_set_freq_divisor_max_0_2(self, divisor):
         packed = struct.pack("!I", divisor)
-        if packed[0] != '\x00':
+        if packed[0] != 0:
             raise self.ParameterError("Out of range.")
         msg = struct.pack("B", ord('c')) + packed[1:]
         self.send_message_until_acked('o', msg)
@@ -1015,7 +1006,7 @@ class ICE(object):
             NOMINAL = 2e6
         else:
             NOMINAL = 4e6
-        return NOMINAL / freq_in_hz;
+        return int(NOMINAL / freq_in_hz)
 
     @min_proto_version("0.1")
     @capability('o')
@@ -1099,7 +1090,7 @@ class ICE(object):
                 raise self.FormatError
             return struct.unpack("B", msg)[0] * 2
 
-        ret = ord(msg[0])
+        ret = msg[0]
         msg = msg[1:]
         if ret == errno.ENODEV:
             # XXX Generalize me w.r.t. version?
@@ -1133,7 +1124,7 @@ class ICE(object):
         if ack == 0:
             return speed
 
-        ret = ord(msg[0])
+        ret = msg[0]
         msg = msg[1:]
         if ret == errno.EINVAL:
             raise self.ICE_Error("ICE reports: Invalid argument.")
@@ -1683,7 +1674,7 @@ class ICE(object):
         resp = self.send_message_until_acked('G', struct.pack('B', ord('l')))
         if len(resp) != 3:
             raise self.FormatError("Bad response from `Gl':" + str(resp))
-        high,mid,low = map(ord, resp)
+        high,mid,low = resp
         return low | (mid << 8) | (high << 16)
 
     @min_proto_version("0.2")
@@ -1697,7 +1688,7 @@ class ICE(object):
         resp = self.send_message_until_acked('G', struct.pack('B', ord('d')))
         if len(resp) != 3:
             raise self.FormatError("Bad response from `Gd#':" + str(resp))
-        high,mid,low = map(ord, resp)
+        high,mid,low = resp
         return low | (mid << 8) | (high << 16)
 
     @min_proto_version("0.2")
@@ -1747,7 +1738,7 @@ class ICE(object):
         resp = self.send_message_until_acked('G', struct.pack('B', ord('i')))
         if len(resp) != 3:
             raise self.FormatError("Bad response from `Gi':" + str(resp))
-        high,mid,low = map(ord, resp)
+        high,mid,low = resp
         return low | (mid << 8) | (high << 16)
 
     @min_proto_version("0.2")

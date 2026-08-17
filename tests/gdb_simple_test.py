@@ -20,6 +20,23 @@ import inspect
 from m3.m3_gdb import GdbRemote
 from m3.m3_gdb import test_GdbCtrl
 
+def send_text(sock, msg):
+    sock.sendall(msg.encode('ascii'))
+
+def recv_text(sock, size):
+    return sock.recv(size).decode('ascii')
+
+def test_gdb_recv_preserves_binary_bytes():
+    gdb = GdbRemote(0)
+    client, server = socket.socketpair()
+    try:
+        client.sendall(b'$X0,1:\x80#9f')
+        assert(gdb._gdb_recv(server) == 'X0,1:\x80')
+    finally:
+        client.close()
+        server.close()
+        gdb.sock.close()
+
 class TestGdbSimple(object):
 
     _multiprocess_shared_ = False
@@ -59,23 +76,23 @@ class TestGdbSimple(object):
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect( ('localhost',this.port))
-        s.send('+')
+        send_text(s, '+')
 
         this.log.info("qSupported")
         tx_cmd ='$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+#c9' 
-        s.send(tx_cmd)
+        send_text(s, tx_cmd)
         rx_cmd, rx_subcmd, _ = this.gdb.get()
         print (rx_cmd)
         print (rx_subcmd)
         rx_cmd += rx_subcmd[0]
         assert( rx_cmd ==  tx_cmd[1:-3])
         
-        plus = s.recv(1)
+        plus = recv_text(s, 1)
         assert( plus == '+')
 
         tx_cmd = '$PacketSize=4096#03'
         this.gdb.put(tx_cmd[1:-3])
-        rx_cmd = s.recv(BUF_SIZE)
+        rx_cmd = recv_text(s, BUF_SIZE)
         assert( rx_cmd == tx_cmd)
 
         s.close()
@@ -106,13 +123,13 @@ class TestGdbSimple(object):
         
         def cmd(sock, cmd):
            this.log.debug('TX: ' + cmd)
-           s.send(cmd)
-           plus = s.recv(1)
+           send_text(s, cmd)
+           plus = recv_text(s, 1)
            this.log.debug('plus: ' + cmd)
            assert(plus == '+')
-           rx_resp = s.recv(4096)
+           rx_resp = recv_text(s, 4096)
            this.log.debug('resp: ' + cmd)
-           s.send('+')
+           send_text(s, '+')
            return rx_resp
 
         # this time we launch a thread to run the ctrl interface
@@ -122,7 +139,7 @@ class TestGdbSimple(object):
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect( ('localhost',this.port))
-        s.send('+')
+        send_text(s, '+')
 
         this.log.info("qSupported")
         tx_cmd ='$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+#c9' 

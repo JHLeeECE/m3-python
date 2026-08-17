@@ -80,7 +80,7 @@ class TestMbusWrite(object):
         '2c030000240300003412cdab08a30600', ])
 
         fd, cls.tmp_path = tempfile.mkstemp()
-        f = open(cls.tmp_path, 'w')
+        f = open(cls.tmp_path, 'wb')
         f.write( binascii.unhexlify(program))
         f.close()
         os.close(fd)

@@ -1,7 +1,4 @@
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
+from setuptools import setup
 
 from m3 import __version__
 
@@ -9,6 +6,7 @@ config = {
         'name': 'm3',
         'packages': ['m3'],
         'version': __version__,
+        'python_requires': '>=3.9,<3.10',
         'author': 'Pat Pannuto',
         'author_email': 'pat.pannuto@gmail.com',
         'url': 'https://github.com/mbus/m3-python',
@@ -33,22 +31,18 @@ injector, and snooper are included with this package.''',
             "Natural Language :: English",
             "Operating System :: OS Independent",
             "Programming Language :: Python",
-            #"Programming Language :: Python :: 2",
-            #"Programming Language :: Python :: 2.7",
-            #"Programming Language :: Python :: 3",
+            "Programming Language :: Python :: 3",
             #"Programming Language :: Python :: 3.3",
             #"Programming Language :: Python :: 3.4",
             #"Programming Language :: Python :: 3.5",
             "Programming Language :: Python :: 3.9",
-            #"Programming Language :: Python :: Implementation :: CPython",
+            "Programming Language :: Python :: Implementation :: CPython",
             #"Programming Language :: Python :: Implementation :: PyPy",
             "Topic :: Software Development :: Embedded Systems",
             ],
 
         'install_requires': [
-            'future',
-            'nose',
-            'pyserial',
+            'pyserial>=3.5,<4',
             ],
         'entry_points': {
             'console_scripts': [

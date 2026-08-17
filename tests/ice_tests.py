@@ -68,12 +68,12 @@ class TestICE(object):
 
     def test_discrete_i2c(self):
         logger.info("Test d")
-        ret = TestICE.ice.i2c_send(0xa5, "12345678".decode('hex'))
+        ret = TestICE.ice.i2c_send(0xa5, bytes.fromhex("12345678"))
         if ret != 5:
             logger.error("Failed to send whole short I2C message")
             logger.info("  Did you set fake_TestICE.ice to ACK all addresses?")
             logger.info("  That is: ./fake_TestICE.ice.py /tmp/com2 xxxxxxxx")
-        ret = TestICE.ice.i2c_send(0x69, ("ab"*511).decode('hex'))
+        ret = TestICE.ice.i2c_send(0x69, bytes.fromhex("ab"*511))
         if ret != (1+511):
             logger.error("Failed to send whole long I2C message")
 
@@ -96,10 +96,10 @@ class TestICE(object):
 
     def test_goc(self):
         logger.info("Test f")
-        ret = TestICE.ice.goc_send("a5".decode('hex'), show_progress=False)
+        ret = TestICE.ice.goc_send(bytes.fromhex("a5"), show_progress=False)
         if ret != 1:
             logger.error("Failed to send whole short GOC message")
-        ret = TestICE.ice.goc_send(("96"+"ba"*511).decode('hex'), show_progress=False)
+        ret = TestICE.ice.goc_send(bytes.fromhex("96"+"ba"*511), show_progress=False)
         if ret != (1+511):
             logger.error("Failed to send whole long GOC message")
 
@@ -120,11 +120,11 @@ class TestICE(object):
 
     def test_mbus_message(self):
         logger.info("Test b")
-        ret = TestICE.ice.mbus_send("5a".decode('hex'), "87654321".decode('hex'))
+        ret = TestICE.ice.mbus_send(bytes.fromhex("5a"), bytes.fromhex("87654321"))
         # ret value from addr is always 4
         if ret != 8:
             logger.error("Failed to send whole short MBus message")
-        ret = TestICE.ice.mbus_send("69".decode('hex'), ("ab"*511).decode('hex'))
+        ret = TestICE.ice.mbus_send(bytes.fromhex("69"), bytes.fromhex("ab"*511))
         if ret != (4+511):
             logger.error("Failed to send whole long MBus message")
 
@@ -201,7 +201,7 @@ class TestICE(object):
         if i != 1:
             logger.error("Set/get mismatch mbus should int (1)")
             logger.error("Expected 1  Got " + str(i))
-        TestICE.ice.mbus_send("ec".decode('hex'), "beef".decode('hex'))
+        TestICE.ice.mbus_send(bytes.fromhex("ec"), bytes.fromhex("beef"))
         i = TestICE.ice.mbus_get_should_interrupt()
         if i != 0:
             logger.error("Should interrupt clear failed")
@@ -210,7 +210,7 @@ class TestICE(object):
         i = TestICE.ice.mbus_get_should_interrupt()
         if i != 2:
             logger.error("Set/get mismatch mbus should int (2)")
-        TestICE.ice.mbus_send("ec".decode('hex'), "beef".decode('hex'))
+        TestICE.ice.mbus_send(bytes.fromhex("ec"), bytes.fromhex("beef"))
         i = TestICE.ice.mbus_get_should_interrupt()
         if i != 2:
             logger.error("Should interrupt persistance failed")
@@ -222,7 +222,7 @@ class TestICE(object):
         i = TestICE.ice.mbus_get_use_priority()
         if i != 1:
             logger.error("Set/get mismatch mbus should int (1)")
-        TestICE.ice.mbus_send("db".decode('hex'), "bead".decode('hex'))
+        TestICE.ice.mbus_send(bytes.fromhex("db"), bytes.fromhex("bead"))
         i = TestICE.ice.mbus_get_use_priority()
         if i != 0:
             logger.error("Should use_priority clear failed")
@@ -231,17 +231,17 @@ class TestICE(object):
         i = TestICE.ice.mbus_get_use_priority()
         if i != 2:
             logger.error("Set/get mismatch mbus should int (2)")
-        TestICE.ice.mbus_send("ec".decode('hex'), "beef".decode('hex'))
+        TestICE.ice.mbus_send(bytes.fromhex("ec"), bytes.fromhex("beef"))
         i = TestICE.ice.mbus_get_use_priority()
         if i != 2:
             logger.error("Should use_priority persistance failed")
 
     def test_ein(self):
         logger.info("Test e")
-        ret = TestICE.ice.ein_send("a5".decode('hex'))
+        ret = TestICE.ice.ein_send(bytes.fromhex("a5"))
         if ret != 1:
             logger.error("Failed to send whole short EIN message")
-        ret = TestICE.ice.ein_send(("96"+"ba"*511).decode('hex'))
+        ret = TestICE.ice.ein_send(bytes.fromhex("96"+"ba"*511))
         if ret != (1+511):
             logger.error("Failed to send whole long EIN message")
 
@@ -270,7 +270,7 @@ class TestICE(object):
         logger.info("Test gi")
         TARGET_GPIO_INT_MASK = 0xa53
         TestICE.ice.gpio_set_interrupt_enable_mask(TARGET_GPIO_INT_MASK)
-        if TestICE.ice.gpio_get_interrupt_enable_mask != TARGET_GPIO_INT_MASK:
+        if TestICE.ice.gpio_get_interrupt_enable_mask() != TARGET_GPIO_INT_MASK:
             logger.error("Set/get mismatch gpio interrupt mask")
 
     def test_voltage_state(self):

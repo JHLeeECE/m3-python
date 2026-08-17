@@ -190,7 +190,7 @@ class TestChipIDMaskProgram(object):
         '2c030000240300003412cdab08a30600', ])
 
         fd, tmp_path = tempfile.mkstemp()
-        f = open(tmp_path, 'w')
+        f = open(tmp_path, 'wb')
         f.write( binascii.unhexlify(program))
         f.close()
         os.close(fd)
@@ -225,8 +225,8 @@ if __name__ == '__main__':
     result = nose.run( argv=['--processes=0'], defaultTest=__name__)
     
     if result == True:
-        print 'TESTS PASSED'
+        print('TESTS PASSED')
     else:
-        print 'TESTS FAILED'
+        print('TESTS FAILED')
 
     
